@@ -29,3 +29,15 @@ Single-file Pomodoro timer app (`pomodoro.html`) — vanilla HTML/CSS/JS. No bui
 ## Settings (`package.json`)
 
 The `@anthropic-ai/sdk` dependency is not used by the HTML app and should not be removed unless confirmed unused.
+
+## Frontend Design
+
+This project follows the [SKILL.md](SKILL.md) (Anthropic Frontend Design) guidelines. Key principles:
+
+- **Aesthetic direction**: Before coding, commit to a bold, intentional design direction. No generic "AI" aesthetics.
+- **Typography**: Choose distinctive fonts. Never use Inter, Roboto, Arial, or system-ui as primary fonts.
+- **Color**: CSS variables for consistency. Dominant colors with sharp accents.
+- **Motion**: CSS animations for micro-interactions. Staggered reveals, scroll-triggering, hover states.
+- **Layout**: Unexpected compositions — asymmetry, overlap, grid-breaking elements.
+- **Visual details**: Gradient meshes, noise textures, geometric patterns, grain overlays.
+- **Forbidden**: Purple gradients on white backgrounds, overused font families, predictable layouts.
