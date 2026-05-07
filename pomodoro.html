@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>番茄钟</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; background: #1a1a2e; color: #eee;
+  }
+  .container {
+    background: #16213e;
+    border-radius: 24px; padding: 48px;
+    text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    width: 400px;
+  }
+  h1 { font-size: 24px; margin-bottom: 8px; letter-spacing: 2px; }
+  .mode-label { font-size: 14px; color: #8892b0; margin-bottom: 24px; }
+  .timer {
+    font-size: 96px; font-weight: 700; font-variant-numeric: tabular-nums;
+    margin: 24px 0; letter-spacing: 4px;
+  }
+  .timer.work { color: #ff6b6b; }
+  .timer.break { color: #51cf66; }
+  .controls { display: flex; gap: 12px; justify-content: center; margin-bottom: 32px; }
+  .controls button {
+    padding: 12px 32px; font-size: 16px; font-weight: 600;
+    border: none; border-radius: 12px; cursor: pointer;
+    transition: all 0.2s; min-width: 100px;
+  }
+  .controls button:hover { transform: translateY(-2px); }
+  .controls button:active { transform: translateY(0); }
+  .btn-start { background: #ff6b6b; color: #fff; }
+  .btn-start:hover { background: #ff5252; }
+  .btn-pause { background: #fcc419; color: #1a1a2e; }
+  .btn-pause:hover { background: #fab005; }
+  .btn-reset { background: #495057; color: #fff; }
+  .btn-reset:hover { background: #343a40; }
+  .btn-start.break-mode { background: #51cf66; }
+  .btn-start.break-mode:hover { background: #40c057; }
+  .stats { display: flex; justify-content: center; gap: 48px; }
+  .stat-item p:first-child { font-size: 28px; font-weight: 700; color: #ff6b6b; }
+  .stat-item p:last-child { font-size: 13px; color: #8892b0; margin-top: 4px; }
+  .settings { margin-top: 24px; padding-top: 24px; border-top: 1px solid #1a1a2e; }
+  .settings summary { cursor: pointer; font-size: 13px; color: #8892b0; }
+  .settings-grid { display: flex; gap: 12px; margin-top: 16px; justify-content: center; flex-wrap: wrap; }
+  .settings-grid label { font-size: 13px; color: #8892b0; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .settings-grid input {
+    width: 70px; padding: 6px; border-radius: 8px; border: 1px solid #333;
+    background: #1a1a2e; color: #eee; text-align: center; font-size: 14px;
+  }
+  .settings-grid input:focus { outline: none; border-color: #ff6b6b; }
+  @media (max-width: 480px) {
+    .container { width: 100%; margin: 16px; padding: 32px 24px; }
+    .timer { font-size: 64px; }
+    .controls { flex-wrap: wrap; }
+    .controls button { min-width: 80px; padding: 10px 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🍅 番茄钟</h1>
+  <div class="mode-label" id="modeLabel">专注时间</div>
+  <div class="timer work" id="timerDisplay">25:00</div>
+  <div class="controls">
+    <button class="btn-start" id="startBtn">开始</button>
+    <button class="btn-pause" id="pauseBtn" disabled>暂停</button>
+    <button class="btn-reset" id="resetBtn">重置</button>
+  </div>
+  <div class="stats">
+    <div class="stat-item"><p id="completedCount">0</p><p>已完成</p></div>
+    <div class="stat-item"><p id="sessionCount">0</p><p>本轮番茄</p></div>
+  </div>
+  <div class="settings">
+    <details>
+      <summary>设置</summary>
+      <div class="settings-grid">
+        <label>专注 <input type="number" id="workDuration" value="25" min="1" max="120"></label>
+        <label>短休 <input type="number" id="shortBreakDuration" value="5" min="1" max="30"></label>
+        <label>长休 <input type="number" id="longBreakDuration" value="15" min="1" max="60"></label>
+        <label>长休间隔 <input type="number" id="longBreakInterval" value="4" min="1" max="10"></label>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+  const DEFAULTS = { work: 25, shortBreak: 5, longBreak: 15, longBreakInterval: 4 };
+  const STORAGE_KEY = 'pomodoro-settings';
+
+  let state = {
+    mode: 'work',
+    seconds: 25 * 60,
+    isRunning: false,
+    timerId: null,
+    completedPomodoros: 0,
+    sessionPomodoros: 0,
+  };
+
+  function loadSettings() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULTS;
+  }
+
+  function saveSettings(settings) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch {}
+  }
+
+  const savedSettings = loadSettings();
+  const $ = id => document.getElementById(id);
+  const timerDisplay = $('timerDisplay');
+  const modeLabel = $('modeLabel');
+  const startBtn = $('startBtn');
+  const pauseBtn = $('pauseBtn');
+  const resetBtn = $('resetBtn');
+  const completedCount = $('completedCount');
+  const sessionCount = $('sessionCount');
+  const inputs = {
+    work: $('workDuration'),
+    shortBreak: $('shortBreakDuration'),
+    longBreak: $('longBreakDuration'),
+    longBreakInterval: $('longBreakInterval'),
+  };
+
+  // Hydrate inputs from saved settings
+  inputs.work.value = savedSettings.work;
+  inputs.shortBreak.value = savedSettings.shortBreak;
+  inputs.longBreak.value = savedSettings.longBreak;
+  inputs.longBreakInterval.value = savedSettings.longBreakInterval;
+
+  function getDuration(mode) {
+    const v = parseInt(inputs[mode].value, 10);
+    return (v || DEFAULTS[mode]) * 60;
+  }
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function stopTimer() {
+    if (state.timerId) {
+      clearInterval(state.timerId);
+      state.timerId = null;
+    }
+  }
+
+  function setUiIdle(text = '开始') {
+    state.isRunning = false;
+    startBtn.textContent = text;
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+  }
+
+  function updateTimerText() {
+    timerDisplay.textContent = formatTime(state.seconds);
+  }
+
+  function updateDisplay() {
+    updateTimerText();
+    const isWork = state.mode === 'work';
+    timerDisplay.className = `timer ${isWork ? 'work' : 'break'}`;
+    startBtn.className = `btn-start ${isWork ? '' : 'break-mode'}`;
+    const labels = { work: '专注时间', shortBreak: '短休息', longBreak: '长休息' };
+    modeLabel.textContent = labels[state.mode];
+  }
+
+  function updateStats() {
+    completedCount.textContent = state.completedPomodoros;
+    sessionCount.textContent = state.sessionPomodoros;
+  }
+
+  function resetTimer() {
+    stopTimer();
+    setUiIdle();
+    state.seconds = getDuration(state.mode) * 60;
+    updateDisplay();
+  }
+
+  function switchMode(mode) {
+    state.mode = mode;
+    resetTimer();
+  }
+
+  function completeSession() {
+    if (state.mode === 'work') {
+      state.completedPomodoros++;
+      state.sessionPomodoros++;
+      updateStats();
+
+      const interval = parseInt(inputs.longBreakInterval.value, 10) || DEFAULTS.longBreakInterval;
+      if (state.sessionPomodoros >= interval) {
+        state.sessionPomodoros = 0;
+        switchMode('longBreak');
+        tryNotify('番茄完成！开始长休息 🎉');
+      } else {
+        switchMode('shortBreak');
+        tryNotify('番茄完成！休息一下 🎉');
+      }
+    } else {
+      switchMode('work');
+      tryNotify('休息结束，开始专注！');
+    }
+  }
+
+  function tryNotify(msg) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('🍅 番茄钟', { body: msg });
+    } else if ('Notification' in window && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }
+
+  function tick() {
+    if (state.seconds <= 0) {
+      stopTimer();
+      setUiIdle();
+      completeSession();
+      return;
+    }
+    state.seconds--;
+    updateTimerText();
+  }
+
+  function startTimer() {
+    if (state.isRunning) return;
+    state.isRunning = true;
+    startBtn.textContent = '运行中';
+    startBtn.disabled = true;
+    pauseBtn.disabled = false;
+    state.timerId = setInterval(tick, 1000);
+  }
+
+  function pauseTimer() {
+    if (!state.isRunning) return;
+    stopTimer();
+    setUiIdle('继续');
+  }
+
+  function resetAll() {
+    stopTimer();
+    state.seconds = getDuration(state.mode) * 60;
+    setUiIdle();
+    updateTimerText();
+  }
+
+  function onSettingChange() {
+    if (!state.isRunning) {
+      state.seconds = getDuration(state.mode) * 60;
+      updateTimerText();
+    }
+    const s = {
+      work: parseInt(inputs.work.value, 10) || DEFAULTS.work,
+      shortBreak: parseInt(inputs.shortBreak.value, 10) || DEFAULTS.shortBreak,
+      longBreak: parseInt(inputs.longBreak.value, 10) || DEFAULTS.longBreak,
+      longBreakInterval: parseInt(inputs.longBreakInterval.value, 10) || DEFAULTS.longBreakInterval,
+    };
+    saveSettings(s);
+  }
+
+  startBtn.addEventListener('click', startTimer);
+  pauseBtn.addEventListener('click', pauseTimer);
+  resetBtn.addEventListener('click', resetAll);
+  Object.values(inputs).forEach(inp => inp.addEventListener('change', onSettingChange));
+
+  state.seconds = getDuration('work') * 60;
+  updateDisplay();
+  updateStats();
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); state.isRunning ? pauseTimer() : startTimer(); }
+    if (e.code === 'KeyR') { e.preventDefault(); resetAll(); }
+  });
+</script>
+</body>
+</html>
